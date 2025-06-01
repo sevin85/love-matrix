@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Love Matrix Messenger</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      color: #ff00ff;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+
+    #container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      width: 90%;
+    }
+
+    input, textarea, button {
+      background: black;
+      border: 1px solid #ff00ff;
+      color: #ff00ff;
+      padding: 10px;
+      font-size: 16px;
+      margin: 5px;
+      width: 90%;
+      max-width: 400px;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin-top: 20px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    li {
+      padding: 5px;
+      color: #ff99ff;
+    }
+
+    #confirmation {
+      margin-top: 10px;
+      color: #00ff99;
+      font-size: 14px;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: -1;
+    }
+
+    #loginBox {
+      margin-bottom: 20px;
+    }
+
+    #mainBox {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="loveCanvas"></canvas>
+
+<div id="container">
+  <h2>💌 LOVE MATRIX</h2>
+
+  <div id="loginBox">
+    <input type="text" id="myCode" placeholder="Enter your unique code">
+    <input type="password" id="myPassword" placeholder="Enter your password">
+    <button id="loginBtn">Login / Register</button>
+    <div id="confirmation"></div>
+  </div>
+
+  <div id="mainBox" style="display:none;">
+    <p>✅ Logged in as: <span id="loggedUser"></span></p>
+    <input type="text" id="toCode" placeholder="Receiver's code">
+    <textarea id="message" placeholder="Your love message"></textarea>
+    <button id="sendBtn">Send Message</button>
+    <div id="confirmationSend"></div>
+    <div id="messagesBox">
+      <h3>📥 Messages</h3>
+      <ul id="messages"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase Scripts -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+  import { getDatabase, ref, set, push, onChildAdded, get, update } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyA2GL-i-HGc2gsxFRHXdkHbkyM4vlg5fU8",
+    authDomain: "lovemessenger-b040b.firebaseapp.com",
+    databaseURL: "https://lovemessenger-b040b-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "lovemessenger-b040b",
+    storageBucket: "lovemessenger-b040b.appspot.com",
+    messagingSenderId: "358954526540",
+    appId: "1:358954526540:web:48ba10ed8a08e74ff9d1e9"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  let currentUser = "";
+
+  async function login() {
+    const code = document.getElementById("myCode").value.trim().toLowerCase();
+    const password = document.getElementById("myPassword").value.trim();
+    const confirmDiv = document.getElementById("confirmation");
+
+    if (!code || !password) {
+      confirmDiv.textContent = "⚠️ Please enter both code and password!";
+      return;
+    }
+
+    const userRef = ref(db, 'users/' + code);
+    const snapshot = await get(userRef);
+
+    if (!snapshot.exists()) {
+      // ثبت کاربر جدید
+      await set(userRef, {
+        password: password,
+        created_at: Date.now()
+      });
+    } else {
+      const data = snapshot.val();
+      if (data.password !== password) {
+        confirmDiv.textContent = "❌ Incorrect password!";
+        return;
+      }
+    }
+
+    currentUser = code;
+    document.getElementById("loggedUser").textContent = currentUser;
+    document.getElementById("mainBox").style.display = "block";
+    document.getElementById("loginBox").style.display = "none";
+    confirmDiv.textContent = "";
+    listenToMessages();
+  }
+
+  async function sendMessage() {
+    const to = document.getElementById("toCode").value.trim().toLowerCase();
+    const text = document.getElementById("message").value.trim();
+    const confirmDiv = document.getElementById("confirmationSend");
+
+    if (!to || !text) {
+      confirmDiv.textContent = "⚠️ Fill in both fields!";
+      return;
+    }
+
+    const snapshot = await get(ref(db, 'users/' + to));
+    if (!snapshot.exists()) {
+      confirmDiv.textContent = "❌ Receiver does not exist!";
+      return;
+    }
+
+    const msgRef = push(ref(db, 'messages/' + to));
+    await set(msgRef, {
+      from: currentUser,
+      text: text,
+      timestamp: Date.now(),
+      read: false
+    });
+
+    confirmDiv.textContent = "✅ Message sent!";
+    document.getElementById("message").value = "";
+  }
+
+  function listenToMessages() {
+    const messagesList = document.getElementById("messages");
+    messagesList.innerHTML = "";
+    const msgRef = ref(db, 'messages/' + currentUser);
+
+    onChildAdded(msgRef, function(snapshot) {
+      const data = snapshot.val();
+      const li = document.createElement('li');
+      li.textContent = `💖 From ${data.from}: ${data.text}`;
+      li.style.color = data.read ? "#888" : "#ff99ff";
+
+      if (!data.read) {
+        update(ref(db, 'messages/' + currentUser + '/' + snapshot.key), {
+          read: true
+        });
+      }
+
+      messagesList.appendChild(li);
+    });
+  }
+
+  // Event Listeners
+  document.getElementById("loginBtn").addEventListener("click", login);
+  document.getElementById("sendBtn").addEventListener("click", sendMessage);
+</script>
+
+<!-- Matrix Background -->
+<script>
+  const canvas = document.getElementById('loveCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const loveTexts = ["LOVE"];
+  const fontSize = 20;
+  const spacing = 2.5;
+  const columns = Math.floor(canvas.width / (fontSize * spacing));
+  const drops = Array(columns).fill(1);
+
+  function drawMatrix() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ff00ff";
+    ctx.font = fontSize + "px Arial";
+
+    for (let i = 0; i < drops.length; i++) {
+      const text = loveTexts[Math.floor(Math.random() * loveTexts.length)];
+      ctx.fillText(text, i * fontSize * spacing, drops[i] * fontSize);
+      if (drops[i] * fontSize > canvas.height || Math.random() > 0.975) {
+        drops[i] = 0;
+      }
+      drops[i]++;
+    }
+  }
+
+  setInterval(drawMatrix, 60);
+  window.addEventListener("resize", () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  });
+</script>
+
+</body>
+</html>
